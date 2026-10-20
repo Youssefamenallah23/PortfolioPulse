@@ -284,3 +284,37 @@ def test_export_manifest_download_guard(client):
         assert test_client.get(f"/research-runs/{run_id}/exports/{bad}").status_code == 404, bad
     # the real manifest is downloadable
     assert test_client.get(f"/research-runs/{run_id}/exports/manifest.json").status_code == 200
+
+
+def test_resume_requeues_failed_run(client, monkeypatch):
+    test_client, _tmp = client
+    company_id = _make_company(test_client)
+    run_focus = {"company_id": company_id, "research_focus": "acquisition integration"}
+    # control run: completes normally and can never be resumed
+    ok_id = test_client.post("/research-runs", json=run_focus).json()["run_id"]
+    assert test_client.get(f"/research-runs/{ok_id}").json()["status"] == "awaiting_review"
+    assert test_client.post(f"/research-runs/{ok_id}/resume").status_code == 409
+
+    # a run that failed on a broken provider...
+    monkeypatch.setenv("LLM_PROVIDER", "no_such_provider")
+    get_settings.cache_clear()
+    failed_id = test_client.post("/research-runs", json=run_focus).json()["run_id"]
+    assert test_client.get(f"/research-runs/{failed_id}").json()["status"] == "failed"
+
+    # ...resumes honestly (still broken → failed again, with a reason)...
+    resumed = test_client.post(f"/research-runs/{failed_id}/resume")
+    assert resumed.status_code == 200
+    detail = test_client.get(f"/research-runs/{failed_id}").json()
+    assert detail["status"] == "failed"
+    assert "provider not configured" in detail["error_summary"]
+
+    # ...and recovers completely once the provider is sane again (idempotent replay)
+    monkeypatch.setenv("LLM_PROVIDER", "demo")
+    get_settings.cache_clear()
+    assert test_client.post(f"/research-runs/{failed_id}/resume").status_code == 200
+    detail = test_client.get(f"/research-runs/{failed_id}").json()
+    assert detail["status"] == "awaiting_review", detail
+    # collected sources were kept instead of refetched, and claims finally landed
+    assert detail["source_count"] == 4
+    assert detail["claim_count"] > 0
+    assert test_client.post(f"/research-runs/{failed_id}/resume").status_code == 409

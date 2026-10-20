@@ -526,6 +526,29 @@ def create_run(body: RunIn, background: BackgroundTasks, db: DBSessionDep) -> di
     }
 
 
+@app.post("/research-runs/{run_id}/resume")
+def resume_run(run_id: str, background: BackgroundTasks, db: DBSessionDep) -> dict:
+    """Re-enter execution for a run lost to a restart (queued) or a failed diagnosis.
+
+    Every pipeline node is idempotent and persisted, so replay is safe: collected
+    sources are kept, already-extracted sources are skipped, validation recomputes.
+    """
+    run = _run_or_404(db, run_id)
+    if run.status not in ("queued", "failed"):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"run is in status {run.status}; only queued or failed runs can be resumed. "
+                "Awaiting-review and approved runs are already complete."
+            ),
+        )
+    run.status = "queued"
+    run.error_summary = None
+    db.commit()
+    background.add_task(_execute_run, run.id)
+    return _run_payload(db, run)
+
+
 @app.get("/research-runs/{run_id}")
 def get_run(run_id: str, db: DBSessionDep) -> dict:
     return _run_payload(db, _run_or_404(db, run_id))
