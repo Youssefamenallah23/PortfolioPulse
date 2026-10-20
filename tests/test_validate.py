@@ -363,3 +363,30 @@ def test_are_contradictory_requires_same_category_and_overlap():
     )
     assert are_contradictory(a, a) is None
     assert are_contradictory(a, b) == "figures"
+
+
+def test_figures_elsewhere_on_page_do_not_back_a_claim(session):
+    # The excerpt is the proof of record: a number from another part of the
+    # stored page must not satisfy the overstatement check.
+    company, run = make_run(session)
+    text = (
+        "The company acquired Meridian for approximately 48 million euros. "
+        "Elsewhere on the page the trade press mentions 60 million."
+    )
+    source = fetched_source(session, company, run, text)
+    claim_via_extraction(
+        session,
+        run,
+        source,
+        text,
+        {
+            "claim_text": "The deal was worth 60 million euros.",
+            "category": "acquisition",
+            "supporting_excerpt": "acquired Meridian for approximately 48 million euros",
+        },
+        "acquired Meridian",
+    )
+    report = validate_run_claims(session, run)
+    session.commit()
+    overstate = [i for i in report.issues if i.issue_type == ISSUE_CLAIM_OVERSTATES]
+    assert overstate and "60" in overstate[0].message

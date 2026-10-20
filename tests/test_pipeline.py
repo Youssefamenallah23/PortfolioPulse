@@ -323,14 +323,15 @@ def test_llm_provider_error_does_not_erase_partial_results(session):
             raise RuntimeError("LLM provider credentials expired")
 
     provider = RoundSearchProvider([[_SearchHit("https://news.example.test/s1")]])
-    make_pipeline(
+    state = make_pipeline(
         session, company, run, default_fetcher(), extractor=ExplodingExtractor(), search=provider
     ).execute()
     session.commit()
-    assert run.status == "failed"
-    assert "provider" in (run.error_summary or "")
-    # collected sources persist for debugging and resume
-    assert session.query(m.Source).filter_by(run_id=run.id).count() == 1
+    # a provider error isolates to the affected source: failed_extraction, run alive
+    assert run.status == "awaiting_review"
+    source = session.query(m.Source).filter_by(run_id=run.id).one()
+    assert source.extraction_status == "failed_extraction"
+    assert any("provider error isolated" in w for w in state.warnings)
 
 
 def test_max_research_rounds_bounded_then_gap_report(session):

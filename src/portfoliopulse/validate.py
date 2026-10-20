@@ -9,7 +9,8 @@ Rules implemented:
 3. The supporting excerpt must literally occur in the stored text    -> excerpt_not_found
    of at least one linked source.
 4. A claim must not say more than its proof: every number in the     -> claim_overstates_excerpt
-   claim text must be present in the excerpt or the stored text.
+   claim text must be present in the supporting excerpt (the excerpt
+   is the evidence of record, not "somewhere on the page").
 5. An event dated AFTER the source existed is suspicious unless      -> date_confusion
    the claim text signals future intent ("plans to", "by 2027", ...).
 6. Claims from different sources that disagree (same category,
@@ -177,8 +178,10 @@ def _claim_issues(
             )
         )
 
-    # A claim may not contain a figure its evidence does not contain anywhere.
-    haystack = _norm(claim.supporting_excerpt) + " " + " ".join(_norm(t) for t in source_texts)
+    # A claim may not contain a figure its quoted proof does not contain. The
+    # excerpt is the evidence of record; a figure that only appears elsewhere on
+    # the page cannot back this claim.
+    haystack = _norm(claim.supporting_excerpt)
     haystack_nums = _numbers(haystack)
     unsupported_nums = _numbers(claim.claim_text) - haystack_nums
     if unsupported_nums:
@@ -187,7 +190,8 @@ def _claim_issues(
                 session,
                 run_id,
                 ISSUE_CLAIM_OVERSTATES,
-                f"claim {claim.id} contains figure(s) {sorted(unsupported_nums)} not present in its evidence.",
+                f"claim {claim.id} contains figure(s) {sorted(unsupported_nums)} not present in "
+                "its supporting excerpt.",
                 claim_id=claim.id,
             )
         )
