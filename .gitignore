@@ -1,0 +1,27 @@
+# Secrets and local configuration
+.env
+
+# Local databases
+*.db
+*.db-journal
+*.sqlite3
+
+# Generated research artifacts
+artifacts/
+eval-artifacts/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
