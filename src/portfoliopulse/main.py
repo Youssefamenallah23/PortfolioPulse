@@ -23,6 +23,7 @@ from portfoliopulse.collect import (
 )
 from portfoliopulse.config import effective_env, get_settings, update_env_var
 from portfoliopulse.db import make_engine, make_session_factory, utcnow
+from portfoliopulse.delta import delta_for_run
 from portfoliopulse.exports import (
     ExportBlocked,
     ExportWriteError,
@@ -555,7 +556,11 @@ def resume_run(run_id: str, background: BackgroundTasks, db: DBSessionDep) -> di
 
 @app.get("/research-runs/{run_id}")
 def get_run(run_id: str, db: DBSessionDep) -> dict:
-    return _run_payload(db, _run_or_404(db, run_id))
+    run = _run_or_404(db, run_id)
+    payload = _run_payload(db, run)
+    # read-only pulse computation: the change vs the last approved run, when one exists
+    payload["delta"] = delta_for_run(db, run)
+    return payload
 
 
 @app.get("/research-runs/{run_id}/sources")

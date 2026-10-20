@@ -318,6 +318,9 @@ async function approveRun(id){
 async function exportRun(id){
  try{await jfetch('/research-runs/'+id+'/export',{method:'POST'});
   say('exports generated');loadRun();loadRuns();}catch(e){say('export failed: '+e.message,true);}}
+async function resumeRun(id){
+ try{await jfetch('/research-runs/'+id+'/resume',{method:'POST'});
+  say('run resumed');loadRun();loadRuns();}catch(e){say('resume failed: '+e.message,true);}}
 
 function footList(sources){return `<ul class="foot">`+(sources||[]).map((s,j)=>
  `<li><span class="fn">[${j+1}]</span>
@@ -396,6 +399,7 @@ async function loadRun(){
    <b style="font-family:'IBM Plex Serif',Georgia,serif;font-size:1.05rem">${esc((run.company||{}).name||run.run_id)}</b></div>
   <p class="meta" style="margin:.35rem 0 0">Focus: ${esc(run.research_focus||'—')}</p>
   <p class="meta" style="margin:.15rem 0 0">${esc(runCounts(run))}${run.finished_at?` · finished ${esc(fmtDate(run.finished_at))}`:''}</p>
+  ${run.delta?`<p class="meta" style="margin:.15rem 0 0"><b>Pulse vs run ${esc(run.delta.prior_run_id)}</b> · ${run.delta.unchanged_count} unchanged · ${run.delta.new.length} new · ${run.delta.contradicts.length} contradicting</p>`:''}
   ${run.status==='queued'||run.status==='running'?'<span class="meta">Measuring as the run works…</span>':unresolvedChips(u)}`;
  if(run.error_summary)html+=`<p class="err">${esc(run.error_summary)}</p>`;
  if(run.status==='queued'||run.status==='running')
@@ -405,6 +409,8 @@ async function loadRun(){
   html+=`<button class="primary" onclick="approveRun('${esc(run.run_id)}')">Approve for export</button>`;
  if(run.status==='awaiting_review'||run.status==='approved')
   html+=`<button onclick="exportRun('${esc(run.run_id)}')">Generate exports</button>`;
+ if(run.status==='failed')
+  html+=`<button onclick="resumeRun('${esc(run.run_id)}')">Resume run</button>`;
  html+='</div></div>';
  $('run-panel').innerHTML=html;
  /* sections */

@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from portfoliopulse import models as m
 from portfoliopulse.db import utcnow
+from portfoliopulse.delta import delta_for_run
 from portfoliopulse.review import visible_claims
 
 
@@ -204,6 +205,24 @@ def build_markdown_briefing(session: Session, run: m.ResearchRun) -> str:
         "- Rejected/flagged material is excluded from sections 2–5 and remains available in the audit trail."
     )
     lines.append("")
+    delta = delta_for_run(session, run)
+    if delta is not None:
+        lines.append("## 11. Delta since the last approved run")
+        lines.append(
+            f"- Compared against run `{delta['prior_run_id']}` "
+            f"(finished {delta['prior_finished_at']})."
+        )
+        lines.append(
+            f"- {delta['unchanged_count']} statement(s) unchanged: the same fact is on record already."
+        )
+        for text in delta["new"]:
+            lines.append(f"- NEW: {text}")
+        for pair in delta["contradicts"]:
+            lines.append(
+                f'- CONTRADICTS THE PRIOR RECORD: "{pair["claim"]}", '
+                f'previously on record as: "{pair["prior"]}"'
+            )
+        lines.append("")
     if footnote_defs:
         lines.append(footnote_defs)  # renders Markdown footnotes exactly once
     lines.append("")

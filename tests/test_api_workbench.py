@@ -318,3 +318,31 @@ def test_resume_requeues_failed_run(client, monkeypatch):
     assert detail["source_count"] == 4
     assert detail["claim_count"] > 0
     assert test_client.post(f"/research-runs/{failed_id}/resume").status_code == 409
+
+
+def test_delta_between_two_approved_runs(client):
+    test_client, _tmp = client
+    company_id = _make_company(test_client)
+    first = test_client.post(
+        "/research-runs", json={"company_id": company_id, "research_focus": "acquisition"}
+    ).json()["run_id"]
+    _full_review(test_client, first)
+    assert test_client.post(f"/research-runs/{first}/approve").status_code == 200
+
+    # a second run on the same company: identical demo data, so the pulse is all unchanged
+    second = test_client.post(
+        "/research-runs", json={"company_id": company_id, "research_focus": "acquisition"}
+    ).json()["run_id"]
+    detail = test_client.get(f"/research-runs/{second}").json()
+    delta = detail["delta"]
+    assert delta["prior_run_id"] == first
+    assert delta["unchanged_count"] == detail["claim_count"]
+    assert delta["new"] == [] and delta["contradicts"] == []
+
+    # fully approved: the briefing gains a delta section
+    _full_review(test_client, second)
+    assert test_client.post(f"/research-runs/{second}/approve").status_code == 200
+    test_client.post(f"/research-runs/{second}/export")
+    brief = test_client.get(f"/research-runs/{second}/exports/analyst_brief.md")
+    assert "## 11. Delta since the last approved run" in brief.text
+    assert "unchanged: the same fact is on record already" in brief.text
