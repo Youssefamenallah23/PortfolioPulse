@@ -10,6 +10,7 @@ dependencies = [
     "sqlalchemy>=2.0",
     "google-genai>=2.31.0",
     "openpyxl>=3.1.5",
+    "trafilatura>=2.3.1",
 ]
 
 [dependency-groups]

@@ -22,6 +22,7 @@ import urllib.request as urllib_request
 import urllib.robotparser as urllib_robotparser
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Protocol
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
@@ -335,9 +336,53 @@ class CollectReport:
         }
 
 
-# ponytail: naive HTML-to-text (regex); real parser lands separately.
+# Main-content extraction: trafilatura parses document structure (drops nav, cookie
+# banners and boilerplate, reads meta dates). When it yields nothing (bare fixture
+# pages, plain-text bodies) the old naive flattener keeps the exact previous behavior.
+import trafilatura as _trafilatura
+
 _SCRIPT_RE = re.compile(r"<(script|style)\b.*?</\1>", re.IGNORECASE | re.DOTALL)
 _TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _naive_text_from_html(body: bytes) -> str:
+    text = body.decode("utf-8", errors="replace")
+    text = _SCRIPT_RE.sub(" ", text)
+    text = _TAG_RE.sub(" ", text)
+    text = html_lib.unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _parse_meta_date(value: str | None):
+    """Naive-UTC datetime from a metadata date string; garbage stays None."""
+    if not value:
+        return None
+    text_val = value.rstrip()[:-1] + "+00:00" if value.rstrip().endswith("Z") else value.rstrip()
+    try:
+        parsed = datetime.fromisoformat(text_val)
+    except ValueError:
+        return None
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.UTC).replace(tzinfo=None)
+    return parsed
+
+
+def _text_from_html(body: bytes) -> tuple[str, str | None]:
+    """Page text plus, when the page metadata declares it, its publication date string."""
+    html_text = body.decode("utf-8", errors="replace")
+    try:
+        extracted = _trafilatura.extract(html_text, include_comments=False)
+    except Exception:  # noqa: BLE001 - a parser crash must not fail the collect node
+        extracted = None
+    if not extracted or not extracted.strip():
+        return _naive_text_from_html(body), None
+    published = None
+    try:
+        meta = _trafilatura.extract_metadata(html_text)
+    except Exception:  # noqa: BLE001 - metadata is best-effort
+        meta = None
+    published = getattr(meta, "date", None) if meta is not None else None
+    return re.sub(r"\s+", " ", extracted).strip(), published
 
 
 class RobotsGate:
@@ -376,14 +421,6 @@ class RobotsGate:
             self._cache[origin] = parser
         parser = self._cache[origin]
         return parser is None or parser.can_fetch(user_agent, url)
-
-
-def _naive_text_from_html(body: bytes) -> str:
-    text = body.decode("utf-8", errors="replace")
-    text = _SCRIPT_RE.sub(" ", text)
-    text = _TAG_RE.sub(" ", text)
-    text = html_lib.unescape(text)
-    return re.sub(r"\s+", " ", text).strip()
 
 
 def collect_url(
@@ -485,9 +522,12 @@ def collect_url(
     if status != STATUS_FETCHED:
         return source, status
 
-    text = _naive_text_from_html(outcome.body)  # type: ignore[arg-type]
+    text, meta_date = _text_from_html(outcome.body)  # type: ignore[arg-type]
     source.excerpt = text[:280] if text else None
     source.status = STATUS_FETCHED
+    published = _parse_meta_date(meta_date)
+    if published is not None:
+        source.published_at = published
     existing_text = session.get(m.SourceText, source.id)
     if existing_text:
         existing_text.text = text

@@ -520,3 +520,63 @@ def test_batch_counts_blocked_by_robots(session):
     )
     assert report.blocked_by_robots == 2
     assert report.totals()["blocked_by_robots"] == 2
+
+
+# --- main-content extraction (trafilatura with naive fallback) -------------------
+
+
+def test_main_content_extraction_drops_boilerplate_and_reads_meta_date(session):
+    company, run = make_run(session)
+    body = (
+        b"<html><head><meta property='article:published_time' content='2026-02-03'>"
+        b"<title>News</title></head><body>"
+        b"<nav>Home About Login cookie banner accept all</nav>"
+        b"<article><p>"
+        + b"Northstar acquired Meridian for millions. "
+        * 8
+        + b"<p>Wider disclosures followed in the quarter.</p></article>"
+        b"<footer>All rights reserved change settings</footer>"
+        b"</body></html>"
+    )
+    outcome = FetchOutcome(200, "text/html", body, "https://news.example/n1")
+
+    source, status = collect_url(
+        session,
+        run,
+        company,
+        UrlTarget(url="https://news.example/n1", title="News"),
+        fetcher=MockFetcher({"https://news.example/n1": [outcome]}),
+    )
+    assert status == "fetched"
+    stored = session.get(m.SourceText, source.id)
+    text = stored.text
+    assert "Northstar acquired Meridian" in text
+    assert "cookie banner" not in text
+    assert "All rights reserved" not in text
+    assert source.published_at is not None
+    assert (source.published_at.year, source.published_at.month, source.published_at.day) == (
+        2026,
+        2,
+        3,
+    )
+
+
+def test_plain_text_body_uses_fallback_flattener(session):
+    company, run = make_run(session)
+    outcome = FetchOutcome(
+        200,
+        "text/html",
+        b"Fixture behaviour stays offline and unchanged.",
+        "https://plain.example/p1",
+    )
+    source, status = collect_url(
+        session,
+        run,
+        company,
+        UrlTarget(url="https://plain.example/p1", title="P"),
+        fetcher=MockFetcher({"https://plain.example/p1": [outcome]}),
+    )
+    assert status == "fetched"
+    stored = session.get(m.SourceText, source.id)
+    assert "Fixture behaviour stays offline and unchanged." in stored.text
+    assert source.published_at is None
