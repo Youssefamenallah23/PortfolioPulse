@@ -10,7 +10,7 @@ Public, non-credentialed web pages reached by ordinary HTTP GET:
   recorded with publisher, retrieval timestamp, and the verbatim page text.
 
 Every source lands in the database with its URL, canonical URL, content hash,
-publisher, HTTP status, and retrieval time — including the ones that failed.
+publisher, HTTP status, and retrieval time, including the ones that failed.
 
 ## Refusals are recorded, never bypassed
 
@@ -25,22 +25,25 @@ remaining sources. The system never:
 A blocked source is an honest gap, surfaced in the run's warnings and gap
 report — not an obstacle to route around.
 
-## ⚠️ Known limitation: no robots.txt / ToS honouring layer (unguarded)
+## robots.txt is honoured (fetch/parse/check, cached per origin)
 
-**The current MVP does not implement a robots.txt fetch/parse/honour layer, and
-does not read site Terms of Service.** This is a deliberate scope cut for the
-MVP and must be treated as an open obligation:
+Before any network fetch (real provider modes, not offline fixtures), the
+collector checks robots.txt:
 
-- Before any use beyond personal evaluation, implement: fetch and cache
-  `robots.txt` per host, honour `Disallow`/`Crawl-delay`, and keep a per-source
-  permission note (`allowed_by_robots`, checked date).
-- Do not treat HTTP success as permission: a page that *can* be fetched is not
-  necessarily a page that *may* be republished; exports should stay internal
-  unless source licences are checked.
-- Until that layer exists, users must ensure their own collection complies with
-  applicable robots directives and site terms. The workbench's polite defaults
-  (per-domain throttle, bounded timeouts, no parallel hammering) are politeness,
-  not permission.
+- `collect.py` builds a `RobotsGate`: it fetches and caches `robots.txt` per
+  origin and asks the standard library parser whether `PortfolioPulse/0.1` may
+  fetch the URL.
+- A `Disallow` for our agent records the source as `blocked_by_robots` and no
+  request is made. A refusal is a gap in the registry, never bypassed.
+- An unreachable or malformed robots.txt does not block (standard practice);
+  no permission is invented either way and the per-domain throttle still applies.
+
+Still an open obligation (unchanged):
+
+- ToS is not read anywhere. HTTP success is not permission to republish: keep
+  exports internal unless source licences are checked.
+- Per-source permission persistence (`allowed_by_robots`, checked-at date) is
+  not yet recorded; the check happens live at collection time.
 
 ## Politeness mechanics that do exist
 

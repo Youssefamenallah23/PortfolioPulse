@@ -21,6 +21,7 @@ from portfoliopulse.collect import (
     HttpxPageFetcher,
     MockFetcher,
     MockSearchProvider,
+    RobotsGate,
     SearchHit,
     SearchProviderUnavailable,
     UrlTarget,
@@ -460,3 +461,62 @@ def test_mock_fetcher_repeats_last_outcome():
     assert fetcher.fetch("https://x.test", 1).status_code == 200
     fetched = fetcher.fetch("https://x.test", 1)
     assert fetched.status_code == 200 and fetched.body == b"ok"
+
+
+# --- robots.txt gate -----------------------------------------------------------
+
+
+def test_robots_gate_blocks_disallowed_paths_without_fetching(session):
+    reads = []
+
+    def fake_read(origin):
+        reads.append(origin)
+        return "User-agent: *\nDisallow: /private/\n"
+
+    robots = RobotsGate(fake_read)
+    company, run = make_run(session)
+    never_called = []
+
+    class NoFetch:
+        def fetch(self, url, timeout):
+            never_called.append(url)
+            return FetchOutcome(200, "text/html", b"<p>secret page</p>", url)
+
+    source, status = collect_url(
+        session,
+        run,
+        company,
+        UrlTarget(url="https://site.example/private/x", title="t"),
+        fetcher=NoFetch(),
+        robots=robots,
+    )
+    assert status == "blocked_by_robots"
+    assert source.status == "blocked_by_robots"
+    assert never_called == []  # no pull attempted
+    assert reads == ["https://site.example"]
+
+
+def test_robots_gate_allows_permitted_paths_and_caches_per_origin(session):
+    def fake_read(origin):
+        return "User-agent: *\nDisallow: /private/\n"
+
+    robots = RobotsGate(fake_read)
+    assert robots.allowed("https://site.example/public/page")
+    assert robots.allowed("https://site.example/public/other")
+    # an unreachable robots.txt allows; it never blocks
+    assert RobotsGate(lambda origin: None).allowed("https://other.example/anything")
+
+
+def test_batch_counts_blocked_by_robots(session):
+    robots = RobotsGate(lambda origin: "User-agent: *\nDisallow: /\n")
+    company, run = make_run(session)
+    report = collect_targets(
+        session,
+        run,
+        company,
+        [UrlTarget(url="https://a.example/1"), UrlTarget(url="https://b.example/1")],
+        fetcher=MockFetcher({}),
+        robots=robots,
+    )
+    assert report.blocked_by_robots == 2
+    assert report.totals()["blocked_by_robots"] == 2

@@ -458,9 +458,7 @@ def test_provider_error_isolates_to_one_source(session):
         def extract(self, text, *, focus, publisher=None):
             if "bad page" in text:
                 raise RuntimeError("empty completion")
-            return json.dumps(
-                {"claims": [claim_for("A supported fact.", "A supported fact.")]}
-            )
+            return json.dumps({"claims": [claim_for("A supported fact.", "A supported fact.")]})
 
     company, run = make_run(session)
     ok_source = make_fetched_source(session, company, run, "A supported fact.")

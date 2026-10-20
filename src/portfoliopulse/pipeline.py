@@ -26,6 +26,7 @@ from portfoliopulse.collect import (
     MAX_BODY_BYTES,
     DomainThrottle,
     PageFetcher,
+    RobotsGate,
     SearchProvider,
     UrlTarget,
     canonical_url,
@@ -86,6 +87,7 @@ class ResearchPipeline:
         max_research_rounds: int = 2,
         min_supported_claims: int = MIN_SUPPORTED_CLAIMS,
         max_body_bytes: int = MAX_BODY_BYTES,
+        robots: RobotsGate | None = None,
     ):
         if max_research_rounds < 1:
             raise ValueError("max_research_rounds must be >= 1")
@@ -101,6 +103,7 @@ class ResearchPipeline:
         self.max_research_rounds = max_research_rounds
         self.min_supported_claims = min_supported_claims
         self.max_body_bytes = max_body_bytes
+        self.robots = robots
 
         self.state = PipelineState(
             run_id=run.id,
@@ -206,6 +209,7 @@ class ResearchPipeline:
             throttle=self.throttle,
             max_sources_per_run=self.max_sources_per_run,
             max_bytes=self.max_body_bytes,
+            robots=self.robots,
         )
         totals = report.totals()
         self.state.warnings.append(f"round {self.state.round} collection: {totals}")

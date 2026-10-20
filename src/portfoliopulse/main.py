@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session as DBSessionBase
 from portfoliopulse import models as m
 from portfoliopulse.collect import (
     DomainThrottle,
+    RobotsGate,
     SearchProviderUnavailable,
     get_fetcher,
     get_search_provider,
@@ -472,6 +473,8 @@ def _execute_run(run_id: str) -> None:
             db.commit()
             return
         no_wait = config.search_provider == "demo"  # fixtures need no politeness delay
+        # robots.txt applies to real network fetches only; offline fixtures have none
+        robots = None if config.search_provider in ("demo", "mock") else RobotsGate()
         try:
             pipeline = ResearchPipeline(
                 db,
@@ -484,6 +487,7 @@ def _execute_run(run_id: str) -> None:
                 timeout=config.http_timeout_seconds,
                 max_sources_per_run=config.max_sources_per_run,
                 max_research_rounds=config.max_research_rounds,
+                robots=robots,
             )
             pipeline.execute()
             db.commit()

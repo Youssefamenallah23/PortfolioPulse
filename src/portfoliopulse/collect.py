@@ -7,8 +7,9 @@ Source-access policy (hard rules):
   (fixture/mock now; real providers configurable via env when implemented).
 - Every fetch has a timeout and bounded retries; per-domain throttling spaces requests.
 
-Statuses written to models.Source.status: fetched | failed | blocked | duplicate |
-unsupported_content_type. "Unknown" stays None (never faked).
+Statuses written to models.Source.status: fetched | failed | blocked |
+blocked_by_robots | duplicate | unsupported_content_type.
+"Unknown" stays None (never faked).
 """
 
 from __future__ import annotations
@@ -17,6 +18,8 @@ import hashlib
 import html as html_lib
 import re
 import time
+import urllib.request as urllib_request
+import urllib.robotparser as urllib_robotparser
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -30,6 +33,7 @@ from portfoliopulse import models as m
 STATUS_FETCHED = "fetched"
 STATUS_FAILED = "failed"  # inaccessible: 404, 410, 5xx, timeout, connection errors
 STATUS_BLOCKED = "blocked"  # access refusal: 401/403/407/429
+STATUS_BLOCKED_ROBOTS = "blocked_by_robots"  # robots.txt disallows this path for us
 STATUS_DUPLICATE = "duplicate"
 STATUS_UNSUPPORTED = "unsupported_content_type"  # unknown type or oversized body
 
@@ -316,6 +320,7 @@ class CollectReport:
     blocked: int = 0
     failed: int = 0
     unsupported: int = 0
+    blocked_by_robots: int = 0
     truncated_by_limit: int = 0
 
     def totals(self) -> dict[str, int]:
@@ -325,14 +330,52 @@ class CollectReport:
             "blocked": self.blocked,
             "failed": self.failed,
             "unsupported": self.unsupported,
+            "blocked_by_robots": self.blocked_by_robots,
             "truncated_by_limit": self.truncated_by_limit,
         }
 
 
-# ponytail: naive HTML-to-text (regex); replace with a real parser if extraction
-# precision ever needs the document structure.
+# ponytail: naive HTML-to-text (regex); real parser lands separately.
 _SCRIPT_RE = re.compile(r"<(script|style)\b.*?</\1>", re.IGNORECASE | re.DOTALL)
 _TAG_RE = re.compile(r"<[^>]+>")
+
+
+class RobotsGate:
+    """Honours robots.txt per origin with the standard library parser.
+
+    An unreachable or malformed robots.txt never blocks (standard practice);
+    an explicit Disallow for our user agent records the source as
+    blocked_by_robots and no fetch is attempted. One fetch per origin, cached.
+    """
+
+    def __init__(self, fetch_robots: Callable[[str], str | None] | None = None):
+        self._cache: dict[str, urllib_robotparser.RobotFileParser | None] = {}
+        self._fetch: Callable[[str], str | None] = fetch_robots or self._read_robots
+
+    @staticmethod
+    def _read_robots(origin: str) -> str | None:
+        try:
+            with urllib_request.urlopen(f"{origin}/robots.txt", timeout=8) as resp:
+                if getattr(resp, "status", 200) == 200:
+                    return resp.read().decode("utf-8", errors="replace")
+        except Exception:  # noqa: BLE001 - unreachable robots.txt must never block
+            return None
+        return None
+
+    def allowed(self, url: str, user_agent: str = USER_AGENT) -> bool:
+        parts = urlparse(url)
+        if parts.scheme not in ("http", "https"):
+            return True
+        origin = f"{parts.scheme}://{parts.netloc.lower()}"
+        if origin not in self._cache:
+            text = self._fetch(origin)
+            parser = None
+            if text is not None:
+                parser = urllib_robotparser.RobotFileParser()
+                parser.parse(text.splitlines())
+            self._cache[origin] = parser
+        parser = self._cache[origin]
+        return parser is None or parser.can_fetch(user_agent, url)
 
 
 def _naive_text_from_html(body: bytes) -> str:
@@ -353,6 +396,7 @@ def collect_url(
     timeout: float = 15.0,
     throttle: DomainThrottle | None = None,
     max_bytes: int = MAX_BODY_BYTES,
+    robots: RobotsGate | None = None,
 ) -> tuple[m.Source, str]:
     """Fetch one URL and record the outcome honestly. Returns (source_row, status)."""
     malformed = False
@@ -377,6 +421,21 @@ def collect_url(
             status=STATUS_FAILED,
         )
         return source, STATUS_FAILED
+
+    # robots.txt is checked before any pull; a refusal is recorded, never bypassed
+    if robots is not None and not robots.allowed(canonical):
+        source, _ = m.ingest_source(
+            session,
+            run.id,
+            company.id,
+            url=target.url,
+            canonical_url=canonical,
+            title=target.title,
+            source_type=target.source_type,
+            status=STATUS_BLOCKED_ROBOTS,
+            publisher=publisher_of(canonical),
+        )
+        return source, STATUS_BLOCKED_ROBOTS
 
     outcome = fetcher.fetch(target.url, timeout)
 
@@ -450,6 +509,7 @@ def collect_targets(
     throttle: DomainThrottle | None = None,
     max_sources_per_run: int = 20,
     max_bytes: int = MAX_BODY_BYTES,
+    robots: RobotsGate | None = None,
 ) -> CollectReport:
     """Collect a batch of targets while enforcing the per-run source ceiling."""
     report = CollectReport()
@@ -470,6 +530,7 @@ def collect_targets(
             timeout=timeout,
             throttle=throttle,
             max_bytes=max_bytes,
+            robots=robots,
         )
         if status == STATUS_FETCHED:
             report.fetched += 1
@@ -477,6 +538,8 @@ def collect_targets(
             report.duplicates += 1
         elif status == STATUS_BLOCKED:
             report.blocked += 1
+        elif status == STATUS_BLOCKED_ROBOTS:
+            report.blocked_by_robots += 1
         elif status == STATUS_UNSUPPORTED:
             report.unsupported += 1
         else:

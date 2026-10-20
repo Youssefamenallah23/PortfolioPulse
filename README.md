@@ -160,8 +160,9 @@ tests/             156 tests, fully offline
 ## Scope and limitations (honest)
 
 - SQLite by design for the MVP; BackgroundTasks (not a durable queue) execute
-  runs, so a restart loses a `queued` run.
-- No robots.txt/ToS honouring layer yet: a refused source (HTTP 403) is recorded
-  as `blocked` and never bypassed (see `docs/source-policy.md`).
+  runs, so a restart can lose a `queued` run. `POST /research-runs/{id}/resume`
+  re-enters the idempotent pipeline for `queued` or `failed` runs.
+- robots.txt is honoured on real fetches (`blocked_by_robots` recorded, no
+  bypass); site Terms of Service are not read anywhere (see `docs/source-policy.md`).
 - The evaluation dataset is fictional fixtures; a real 10 to 15 company dataset
   requires the source-policy work plus human annotation (procedure documented).
