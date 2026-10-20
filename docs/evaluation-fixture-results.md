@@ -9,7 +9,7 @@
 - Missing/incorrect date rate on gold-dated events: **1** of 10 → **0.100**
 - Duplicate source rate: **0.000** · duplicate event rate: **0.000**
 - Hypotheses drafted (approved after review): **9**
-- Avg automated end-to-end time per run: **0.07s** (excludes human review time)
+- Avg automated end-to-end time per run: **0.11s** (excludes human review time)
 - Human hypothesis usefulness ratings: **not measured** (require a human panel; annotation schema supports it)
 - Cost per run: **not measured in fixture mode** (fixture providers cost nothing; real provider runs report token usage separately)
 
