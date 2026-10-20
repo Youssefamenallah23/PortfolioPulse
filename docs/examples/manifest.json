@@ -1,0 +1,14 @@
+{
+  "run_id": "run_4eff28295bf2",
+  "company_id": "company_4c8253d02b66",
+  "generated_at": "2026-10-20T13:51:06.849465Z",
+  "approval_status": "approved",
+  "directory": "eval-artifacts\\run_4eff28295bf2_kaunas-electronics",
+  "files": [
+    "analyst_brief.md",
+    "research_pack.xlsx"
+  ],
+  "warnings": [
+    "2 conflicting claim(s) disclosed in the briefing and Open Questions"
+  ]
+}

@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PortfolioPulse — behind the scenes of a research run</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F3F4F1;
+    --panel:#FFFFFF;
+    --ink:#17201D;
+    --grey:#5D665F;
+    --line:#D9DED8;
+    --teal:#1F6A5E;      /* evidence */
+    --teal-bg:#E6EFEA;
+    --egg:#4A2846;       /* human review */
+    --egg-bg:#EFE8EE;
+    --amber:#7A5800;     /* conflict / gap */
+    --amber-bg:#F3ECDD;
+    --code:#F6F7F4;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:"IBM Plex Sans",system-ui,sans-serif;
+    background:var(--paper);color:var(--ink);
+    line-height:1.5;
+  }
+  .mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    display:flex;align-items:center;gap:24px;flex-wrap:wrap;
+    padding:14px 22px;border-bottom:1px solid var(--line);background:var(--panel);
+  }
+  .brand h1{font-size:19px;font-weight:700;letter-spacing:-0.01em}
+  .brand p{font-size:13px;color:var(--grey);max-width:56ch}
+  .controls{margin-left:auto;display:flex;gap:8px}
+  .controls button{
+    font-family:"IBM Plex Mono",monospace;font-size:13px;
+    padding:7px 16px;border-radius:999px;cursor:pointer;
+    border:1px solid var(--ink);background:var(--panel);color:var(--ink);
+  }
+  .controls button:hover{background:var(--ink);color:var(--panel)}
+  .controls button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .controls button:disabled{opacity:.35;cursor:default}
+  .controls button:disabled:hover{background:var(--panel);color:var(--ink)}
+
+  /* ---------- layout ---------- */
+  .grid{
+    display:grid;
+    grid-template-columns:262px minmax(0,1fr) 312px;
+    min-height:calc(100vh - 128px);
+  }
+  @media (max-width:1020px){
+    .grid{grid-template-columns:1fr;min-height:0}
+    .rail{border-right:none;border-bottom:1px solid var(--line)}
+    .statepanel{border-left:none;border-top:1px solid var(--line)}
+  }
+
+  /* ---------- pipeline rail ---------- */
+  .rail{padding:22px 20px;border-right:1px solid var(--line)}
+  .rail h2,.inspector h2,.statepanel h2{
+    font-size:12.5px;font-weight:600;color:var(--grey);margin-bottom:14px;
+  }
+  .rail ul{list-style:none;position:relative}
+  .rail ul::before{
+    content:"";position:absolute;left:11px;top:16px;bottom:16px;
+    width:1px;background:var(--line);
+  }
+  .rail li{position:relative;padding:9px 0 9px 30px}
+  .rail .dot{
+    position:absolute;left:7px;top:13px;width:9px;height:9px;border-radius:50%;
+    border:1.5px solid var(--grey);background:var(--panel);
+  }
+  .rail li.done .dot{background:var(--teal);border-color:var(--teal)}
+  .rail li.active .dot{border-color:var(--egg);background:var(--panel);box-shadow:0 0 0 3px var(--egg-bg)}
+  .rail li.active .name{color:var(--ink);font-weight:600}
+  .rail .name{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--grey)}
+  .rail li.active .name{color:var(--egg)}
+  .rail li.done .name{color:var(--ink)}
+  .rail .note{display:block;font-size:11px;color:var(--grey);margin-top:1px;min-height:14px}
+  .loopnote{
+    display:inline-block;font-size:10.5px;color:var(--amber);
+    font-family:"IBM Plex Mono",monospace;margin-top:2px;
+  }
+
+  /* ---------- inspector ---------- */
+  .inspector{padding:22px 28px;overflow-y:auto;max-height:calc(100vh - 128px)}
+  @media (max-width:1020px){.inspector{max-height:none;overflow:visible}}
+  .activity{font-size:17px;line-height:1.55;font-weight:500;max-width:66ch}
+  .cards{margin-top:20px;display:flex;flex-direction:column;gap:12px}
+  .card{
+    border:1px solid var(--line);border-radius:10px;background:var(--panel);
+    padding:14px 16px;max-width:72ch;
+  }
+  .card.enter{animation:rise .45s ease both}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .card .tagrow{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+  .tag{
+    font-family:"IBM Plex Mono",monospace;font-size:11px;
+    padding:2px 9px;border-radius:999px;
+  }
+  .tag.teal{background:var(--teal-bg);color:var(--teal)}
+  .tag.egg{background:var(--egg-bg);color:var(--egg)}
+  .tag.amber{background:var(--amber-bg);color:var(--amber)}
+  .tag.ink{background:#E9EBE7;color:var(--ink)}
+  .card h3{font-size:14.5px;font-weight:600}
+  .card p{font-size:13.5px;color:var(--ink);margin-top:4px}
+  .card pre{
+    font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.6;
+    background:var(--code);padding:10px 12px;border-radius:6px;
+    overflow-x:auto;margin-top:10px;white-space:pre-wrap;word-break:break-word;
+  }
+  .card ul{margin:8px 0 0 18px;font-size:13.5px}
+  .card li{margin-top:3px}
+  .decision{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  .decision button{
+    font-family:"IBM Plex Sans",sans-serif;font-size:14px;font-weight:600;
+    padding:8px 18px;border-radius:8px;cursor:pointer;border:1.5px solid var(--ink);
+    background:var(--panel);color:var(--ink);
+  }
+  .decision button:hover{background:var(--ink);color:var(--panel)}
+  .decision button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .decision button.hint{font-weight:400;border-color:var(--line);color:var(--grey);pointer-events:none}
+
+  /* ---------- state panel ---------- */
+  .statepanel{padding:22px 20px;border-left:1px solid var(--line)}
+  .statepanel dl{display:grid;grid-template-columns:1fr auto;gap:7px 12px}
+  .statepanel dt{
+    font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--grey);
+    align-self:baseline;
+  }
+  .statepanel dd{
+    font-family:"IBM Plex Mono",monospace;font-size:14px;font-weight:500;
+    text-align:right;padding:1px 6px;border-radius:4px;
+  }
+  .statepanel dd.zero{color:var(--grey);font-weight:400}
+  .statepanel dd.flash{background:var(--amber-bg)}
+  .statusline{
+    margin-top:18px;border-top:1px dashed var(--line);padding-top:14px;
+    font-family:"IBM Plex Mono",monospace;font-size:12px;line-height:1.7;
+  }
+  .statusline b{font-weight:500}
+
+  /* ---------- footer ---------- */
+  .footer{
+    display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;
+    padding:10px 22px;border-top:1px solid var(--line);
+    font-size:12px;color:var(--grey);background:var(--panel);
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <h1>PortfolioPulse — behind the scenes of a research run</h1>
+    <p>How permitted public sources become an auditable research brief: a LangGraph pipeline
+       that only accepts claims it can trace, pauses for a human decision, and exports what was reviewed.</p>
+  </div>
+  <div class="controls">
+    <button id="playBtn">Pause</button>
+    <button id="stepBtn">Step</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+</header>
+
+<main class="grid">
+
+  <aside class="rail">
+    <h2>Pipeline</h2>
+    <ul id="rail"></ul>
+  </aside>
+
+  <section class="inspector">
+    <h2>What just happened</h2>
+    <div class="activity" id="activity" role="status" aria-live="polite"></div>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <aside class="statepanel">
+    <h2>Run state</h2>
+    <dl id="stateList"></dl>
+    <div class="statusline" id="statusline"></div>
+  </aside>
+
+</main>
+
+<footer class="footer">
+  <span>Fixture data: Northvale Logistics is a fictional company; all URLs use reserved .example domains.</span>
+  <span class="mono">PortfolioPulse explainer</span>
+</footer>
+
+<script>
+/* ------------------------------------------------------------------ */
+/* Node rail                                                           */
+/* ------------------------------------------------------------------ */
+const NODES = [
+  'validate_request','plan_research','collect_sources','normalize_and_dedupe',
+  'extract_claims','validate_claims','assess_gaps','generate_hypotheses',
+  'review_pending','build_exports','finalize_run'
+];
+const rail = document.getElementById('rail');
+let railRefs = {};
+NODES.forEach(n=>{
+  const li = document.createElement('li');
+  li.id = 'r_' + n;
+  li.innerHTML = '<span class="dot"></span><span class="name">' + n + '</span><span class="note"></span>';
+  rail.appendChild(li);
+  railRefs[n] = li;
+});
+function markRail(node){
+  NODES.forEach(n=>{
+    railRefs[n].classList.remove('active');
+    if (NODES.indexOf(n) < NODES.indexOf(node)){
+      railRefs[n].classList.add('done');
+      railRefs[n].classList.remove('active');
+    }
+  });
+  railRefs[node].classList.add('active');
+}
+
+/* ------------------------------------------------------------------ */
+/* State panel                                                         */
+/* ------------------------------------------------------------------ */
+const STATE_KEYS = [
+  ['sources','Sources collected'],
+  ['claims','Candidate claims'],
+  ['supported','Supported claims'],
+  ['needsreview','Needs review'],
+  ['conflicts','Conflicts'],
+  ['hypotheses','Hypotheses drafted'],
+  ['reviewed','Human-reviewed items'],
+  ['exports','Exports written']
+];
+const S = {};
+STATE_KEYS.forEach(([k])=>S[k]=0);
+const stateList = document.getElementById('stateList');
+const ddRefs = {};
+STATE_KEYS.forEach(([k,label])=>{
+  const dt = document.createElement('dt'); dt.textContent = label;
+  const dd = document.createElement('dd'); dd.textContent = '0';
+  stateList.appendChild(dt); stateList.appendChild(dd);
+  ddRefs[k] = dd;
+});
+function updateState(changes){
+  for (const k in changes){
+    S[k] = Math.max(0, S[k] + changes[k]);
+  }
+  STATE_KEYS.forEach(([k])=>{
+    const dd = ddRefs[k];
+    dd.textContent = S[k];
+    dd.classList.toggle('zero', S[k]===0);
+    if (changes && changes[k] !== undefined){
+      dd.classList.remove('flash');
+      void dd.offsetWidth; /* restart animation */
+      dd.classList.add('flash');
+      setTimeout(()=>dd.classList.remove('flash'), 700);
+    }
+  });
+  const status = document.getElementById('statusline');
+  const done = NODES.slice(0, NODES.indexOf(ACTIVE_NODE)+1).length;
+  status.innerHTML = 'node ' + done + '/11 of graph<br>run nwv_run_014<br>provider: <b>fixtures, offline</b>';
+}
+let ACTIVE_NODE = NODES[0];
+
+/* ------------------------------------------------------------------ */
+/* Inspector                                                           */
+/* ------------------------------------------------------------------ */
+const activityEl = document.getElementById('activity');
+const cardsEl = document.getElementById('cards');
+function addCard(c){
+  const div = document.createElement('article');
+  div.className = 'card enter';
+  let inner = '<div class="tagrow"><span class="tag ' + c.tone + '">' + c.kind + '</span><h3>' + c.title + '</h3></div>';
+  if (c.body) inner += '<p>' + c.body + '</p>';
+  if (c.pre)  inner += '<pre>' + c.pre + '</pre>';
+  if (c.list) inner += '<ul>' + c.list.map(x=>'<li>' + x + '</li>').join('') + '</ul>';
+  div.innerHTML = inner;
+  cardsEl.prepend(div);
+  while (cardsEl.children.length > 7) cardsEl.lastElementChild.remove();
+}
+function decideButtons(defs, onPick){
+  const wrap = document.createElement('div');
+  wrap.className = 'decision';
+  defs.forEach((d,idx)=>{
+    const b = document.createElement('button');
+    if (d.hint){ b.className = 'hint'; b.disabled = true; }
+    b.textContent = d.label;
+    b.addEventListener('click', ()=>{ wrap.remove(); onPick(d, idx); });
+    wrap.appendChild(b);
+  });
+  cardsEl.prepend(wrap);
+  return wrap;
+}
+
+/* ------------------------------------------------------------------ */
+/* Timeline — fixture script of one research run                       */
+/* ------------------------------------------------------------------ */
+const STEP_DEFS = [
+{ node:'validate_request', text:
+  'An analyst submits a research request: the company Northvale Logistics, its official website, and a research focus. The request is validated — no scraping of search engines, no credentials, just three plain inputs — and a run record is opened.',
+  card:{kind:'run opened', tone:'teal', title:'run nwv_run_014', pre:
+'company:  Northvale Logistics (fictional)\nsite:     https://www.northvale.example\nfocus:    post-acquisition integration\n          and geographic expansion\nstatus:   running · config capped at\n          20 sources, 2 research rounds'} },
+
+{ node:'plan_research', text:
+  'Instead of one vague prompt, the planner produces a bounded query plan: what to search, which official pages to read, and how many results are allowed. Everything after this step acts inside these limits.',
+  card:{kind:'query plan', tone:'teal', title:'6 planned targets', pre:
+'1 press releases     4 investor news page\n2 news mentions      5 filings index\n3 hires / moves      6 company blog\n\nlimits: max 20 sources · max 2\nfollow-up rounds · 15s timeout'} },
+
+{ node:'collect_sources', text:
+  'The fetcher retrieves each page with timeouts, per-domain throttling and recorded outcomes. Eight fetches are attempted: six succeed, one is refused (403), one turns out to be a copy of another page. A refusal is recorded as a refusal — never as an empty successful page.',
+  state:{sources:6},
+  card:{kind:'source', tone:'teal', title:'src_004 fetched', pre:
+'url:      https://www.northvale.example/news/expansion\ntype:     official announcement\nretrieved:2026-10-20T09:12Z  http 200\nhash:     sha256:b41f…\npublished:2026-07-14\nexcerpt:  kept verbatim, 120 chars'} },
+
+{ node:'normalize_and_dedupe', text:
+  'Deterministic code, not the model: URLs are canonicalised (tracking parameters stripped), publishers extracted, pages fingerprinted by content hash. The duplicate copy merges into its original — the source register stays honest.' },
+
+{ node:'extract_claims', text:
+  'Now the model earns its place. Each source text is passed through a strict schema for candidate claims, with a factual excerpt, a category, and — critically — qualifiers preserved: “plans to” stays “plans to”, an intention never becomes a completed event.',
+  state:{claims:14},
+  card:{kind:'claim extracted', tone:'ink', title:'claim_009 · strategy', pre:
+'text:     The company plans to combine\n          three regional warehouses into\n          one central hub by 2027.\nexcerpt:  “…plans to consolidate its\n          three regional warehouses…”\nsource:   src_004\nevent_date: 2027 (target, not done)'} },
+
+{ node:'validate_claims', text:
+  'A validation stage that most agent demos skip. Deterministic checks: does the excerpt literally exist in the stored source text? Does the claim say more than the excerpt supports? Do two sources disagree? Result: ten claims supported, four sent to review, one conflict kept visible instead of silently resolved.',
+  state:{supported:10, needsreview:4, conflicts:1},
+  card:{kind:'conflict', tone:'amber', title:'conflicting closing dates', pre:
+'claim_003  “expansion completed June”\n           …— src_002 (trade press)\nclaim_011  “expansion expected to open\n           in September” — src_006\n\naction:    both kept, analyst decides\n           which to trust'} },
+
+{ node:'assess_gaps', text:
+  'Evidence is scored against the research focus. One gap is found: nothing in the register says who governs post-acquisition integration. Follow-up is bounded — the loop back to collection is allowed once, then the run proceeds with what it has, explicitly noting the gap.',
+  card:{kind:'evidence gap', tone:'amber', title:'gap: integration governance', pre:
+'looked for: decision rights, reporting\n            lines, integration owner\nfound:      nothing in 7 sources\nfollow-up:  round 1 of 2'} },
+
+{ node:'collect_sources', followUp:true, text:
+  'The bounded loop re-enters collection with a sharper query and brings in one more recording — a public industry webinar where the acquisitions lead describes the integration model. Sources now cover governance. Next round would be capped.',
+  state:{sources:1},
+  card:{kind:'source', tone:'amber', title:'src_007 fetched (follow-up)', pre:
+'url:   https://webinars.example.org/nv-logistics\ntype:  public industry webinar\nround: follow-up 1/2\nexcerpt: “a single integration office\n         now signs off on all sites”'} },
+
+{ node:'generate_hypotheses', text:
+  'The graph turns validated claims into preliminary hypotheses — never conclusions. Each one must carry its supporting claim IDs, at least one alternative explanation, the missing evidence, and the questions an analyst should chase next.',
+  state:{hypotheses:2},
+  card:{kind:'hypothesis', tone:'egg', title:'hyp_001 · draft, unreviewed', body:
+  '“The scale of parallel acquisitions and geographic expansion may be outpacing the current operating model’s ability to coordinate them.”',
+  list:[
+    'Alternative: an integration office already handles this well.',
+    'Missing evidence: internal decision rights and budgets.',
+    'Question to validate: who signs off cross-business decisions?'
+  ]} },
+
+{ node:'review_pending', require:true, text:
+  'Hard stop. The graph is suspended (a LangGraph interrupt) — nothing proceeds until a recorded human decision exists. You are the reviewer now.',
+  card:{kind:'review required', tone:'egg', title:'the run is waiting on you'} },
+
+{ node:'review_pending', require:true, decision:'approve', text:
+  '' },
+
+{ node:'review_pending', require:true, decision:'reject', text:
+  '' },
+
+{ node:'review_pending', require:true, decision:'resume', text:
+  '' },
+
+{ node:'build_exports', text:
+  'Exports are assembled from the reviewed database snapshot — not regenerated by the model. Rejected material stays in the audit trail but never appears as established fact; the unresolved conflict is disclosed in the brief.',
+  state:{exports:2},
+  card:{kind:'export', tone:'teal', title:'artifacts/, reviewed snapshot', pre:
+'analyst_brief.md    sections 1–10, cited\nresearch_pack.xlsx  ExecSummary, Events,\n                    Evidence Register,\n                    Hypotheses, Open Qs\nclaims/sources CSVs  (registers)\nmanifest.json        approval + warnings'} },
+
+{ node:'finalize_run', text:
+  'The run closes as <em>approved</em> — a label that exists only because a durable review decision was persisted, not because the model was confident. Every number below traces back to a source record.',
+  card:{kind:'manifest', tone:'teal', title:'run closed', pre:
+'{\n  "run_id": "nwv_run_014",\n  "status": "approved",\n  "sources_collected": 7,\n  "claims_supported": 10,\n  "hypotheses": 2,\n  "open_conflicts": 1,\n  "warnings": ["1 conflicting date\n    disclosed in Open Questions"]\n}'} }
+];
+
+/* ------------------------------------------------------------------ */
+/* Engine                                                              */
+/* ------------------------------------------------------------------ */
+let idx = -1, playing = false, timer = null;
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+function render(step){
+  ACTIVE_NODE = step.node;
+  markRail(step.node);
+  const note = step.teamNote || '';
+  if (step.text) activityEl.innerHTML = step.text;
+
+  if (step.require && step.decision){
+    if (step.decision === 'approve'){
+      activityEl.textContent = 'The run is paused. Decision 1 of 3: the lead hypothesis is in front of you. Approve it, or push it back.';
+      decideButtons([{label:'Approve hypothesis (it is a question to investigate, not a finding)'},
+                     {label:'Send back for weaker evidence', hint:true}], ()=>{
+        addCard({kind:'review decision', tone:'egg', title:'hyp_001 → approved', pre:
+'target:   hyp_001\ndecision: approved\nnotes:    “Keep as an investigation\n          question, not a finding.”\nat:       2026-10-20T10:31Z'});
+        updateState({reviewed:1});
+        afterDecision();
+      });
+    } else if (step.decision === 'reject'){
+      activityEl.textContent = 'Decision 2 of 3: claim_012 asserts “$40m revenue” with an excerpt that only mentions “strong growth”. Overreach — it does not survive review.';
+      decideButtons([{label:'Reject claim_012 (excerpt does not support it)'},
+                     {label:'Keep it as supported', hint:true}], ()=>{
+        addCard({kind:'review decision', tone:'egg', title:'claim_012 → rejected', pre:
+'target:   claim_012\ndecision: rejected\nnotes:    “Excerpt cannot support the\n          figure. Kept in audit trail,\n          excluded from conclusions.”'});
+        updateState({reviewed:1, needsreview:-1});
+        afterDecision();
+      });
+    } else { /* resume */
+      activityEl.textContent = 'Decision 3 of 3: remaining items are covered or flagged. Resuming the graph — exports may now be built from reviewed records.';
+      decideButtons([{label:'Resume run'}], ()=>{ playing = true; afterDecision(); });
+    }
+    stepBtn.disabled = true;
+    return;
+  }
+  stepBtn.disabled = false;
+
+  if (step.state) updateState(step.state);
+  if (step.card){
+    if (!step.card.pre) delete step.card.pre;
+    addCard(step.card);
+  }
+  if (step.followUp){
+    const n = railRefs['collect_sources'].querySelector('.note');
+    n.innerHTML = (n.innerHTML || '') + ' <span class="loopnote">loop from assess_gaps, round 1/2</span>';
+  }
+}
+function afterDecision(){
+  stepBtn.disabled = true;
+  if (playing){
+    schedule(900);
+  } else {
+    /* stay paused; user presses Step or Play */
+  }
+}
+function next(){
+  idx++;
+  if (idx >= STEP_DEFS.length){
+    playing = false; clearTimeout(timer);
+    playBtn.textContent = 'Replay'; playBtn.disabled = false;
+    stepBtn.disabled = true;
+    activityEl.innerHTML = 'Run complete: 7 sources, 10 supported claims, 2 hypotheses (1 approved), 1 disclosed conflict, 2 exports. Every number can be traced to a source record. <span style="color:var(--grey)">Press Replay to watch again, or Reset to clear.</span>';
+    return;
+  }
+  render(STEP_DEFS[idx]);
+}
+function schedule(ms){
+  clearTimeout(timer);
+  timer = setTimeout(next, ms || 3200);
+}
+playBtn.addEventListener('click', ()=>{
+  if (idx >= STEP_DEFS.length){ reset(); playing = true; playBtn.textContent='Pause'; next(); return; }
+  playing = !playing;
+  playBtn.textContent = playing ? 'Pause' : 'Play';
+  if (playing) schedule(700); else clearTimeout(timer);
+});
+stepBtn.addEventListener('click', ()=>{ playing = false; clearTimeout(timer); playBtn.textContent = 'Play'; next(); });
+resetBtn.addEventListener('click', reset);
+function reset(){
+  clearTimeout(timer); playing = false; idx = -1;
+  playBtn.textContent = 'Play'; playBtn.disabled = false; stepBtn.disabled = false;
+  cardsEl.innerHTML = ''; activityEl.innerHTML = '';
+  STATE_KEYS.forEach(([k])=>{ S[k]=0; ddRefs[k].textContent='0'; ddRefs[k].classList.add('zero'); });
+  document.getElementById('statusline').innerHTML = 'node 0/11 of graph<br>run nwv_run_014<br>provider: <b>fixtures, offline</b>';
+  NODES.forEach(n=>{ railRefs[n].classList.remove('active','done'); });
+  railRefs['collect_sources'].querySelector('.note').innerHTML = '';
+  renderIdle();
+}
+function renderIdle(){
+  ACTIVE_NODE = NODES[0];
+  activityEl.textContent = 'Press Play to run the pipeline, or Step to walk it node by node. The run will pause itself for your review decision.';
+}
+
+/* boot */
+renderIdle();
+playing = true; playBtn.textContent = 'Pause';
+schedule(900);
+</script>
+</body>
+</html>
