@@ -327,9 +327,24 @@ def extract_run_sources(
                 )
             )
             continue
-        results.append(
-            extract_source_claims(
-                session, run, source, stored.text, extractor=extractor, focus=focus
+        # Provider errors (empty completion, timeout, outage) isolate to THIS source,
+        # mirroring the impossible-date rule: one bad item, not a dead run.
+        try:
+            results.append(
+                extract_source_claims(
+                    session, run, source, stored.text, extractor=extractor, focus=focus
+                )
             )
-        )
+        except Exception as exc:  # noqa: BLE001 - record, don't fail the whole run
+            source.extraction_status = STATUS_FAILED_EXTRACTION
+            session.flush()
+            results.append(
+                ExtractionResult(
+                    source_id=source.id,
+                    status=STATUS_FAILED_EXTRACTION,
+                    warnings=[
+                        f"provider error isolated to this source: {type(exc).__name__}: {exc}"
+                    ],
+                )
+            )
     return results

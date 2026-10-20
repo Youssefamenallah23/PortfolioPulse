@@ -449,3 +449,29 @@ def test_no_fixture_mock_never_invents():
     assert json.loads(extractor.extract("any page text", focus="f", publisher=None)) == {
         "claims": []
     }
+
+
+def test_provider_error_isolates_to_one_source(session):
+    class ExplodingExtractor:
+        provider_name = "exploding"
+
+        def extract(self, text, *, focus, publisher=None):
+            if "bad page" in text:
+                raise RuntimeError("empty completion")
+            return json.dumps(
+                {"claims": [claim_for("A supported fact.", "A supported fact.")]}
+            )
+
+    company, run = make_run(session)
+    ok_source = make_fetched_source(session, company, run, "A supported fact.")
+    bad_source = make_fetched_source(
+        session, company, run, "bad page with junk", url="https://example.test/bad"
+    )
+    results = extract_run_sources(session, run, extractor=ExplodingExtractor(), focus="x")
+    by_id = {r.source_id: r for r in results}
+    assert by_id[ok_source.id].status == STATUS_EXTRACTED
+    assert by_id[bad_source.id].status == STATUS_FAILED_EXTRACTION
+    assert "provider error isolated" in by_id[bad_source.id].warnings[0]
+    assert bad_source.extraction_status == STATUS_FAILED_EXTRACTION
+    # the good source's claim still landed; the run is alive
+    assert session.query(m.Claim).filter_by(run_id=run.id).count() == 1
