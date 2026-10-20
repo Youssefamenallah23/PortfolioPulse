@@ -20,6 +20,7 @@ from portfoliopulse.extract import MockClaimExtractor
 
 URL_PROFILE = "https://www.northstar-components.test"
 URL_ACQUISITION = "https://www.northstar-components.test/investors/news/acquisition-meridian"
+URL_RESULTS = "https://www.northstar-components.test/investors/annual-results"
 URL_EXPANSION = "https://trade-news.test/northstar-expansion"
 
 # Sentences that carry fixtures stay on one line: excerpts are matched as
@@ -42,12 +43,22 @@ PAGE_ACQUISITION = (
 PAGE_EXPANSION = (
     "Trade news (fixture): Northstar keeps widening its footprint\n\n"
     "Northstar entered two new regions this year, according to the company. "
-    "The article mentions a sales office and a small warehouse. No figures are stated."
+    "The article mentions a sales office in Rotterdam and a small warehouse. "
+    "Separately, trade press reports value the Meridian deal at around 60 million euros. "
+    "No other figures are stated in this fixture."
+)
+
+PAGE_RESULTS = (
+    "Investor news (fixture): annual results 2025\n\n"
+    "In its annual results Northstar reported revenue of 312 million euros for 2025, "
+    "up 14 percent from the prior year. "
+    "Every figure on this fixture page is fictional."
 )
 
 MARKER_PROFILE = "supplier of industrial sensor components"
 MARKER_ACQUISITION = "completed acquisition of Meridian Messtechnik"
 MARKER_EXPANSION = "entered two new regions this year"
+MARKER_RESULTS = "reported revenue of 312 million euros"
 
 
 def _claims() -> dict[str, str]:
@@ -85,6 +96,28 @@ def _claims() -> dict[str, str]:
                 "category": "geographic_expansion",
                 "supporting_excerpt": "Northstar entered two new regions this year, according to the company.",
                 "event_date": None,
+            },
+            {
+                "claim_text": "Northstar opened a sales office in Rotterdam.",
+                "category": "geographic_expansion",
+                "supporting_excerpt": "The article mentions a sales office in Rotterdam",
+                "event_date": None,
+            },
+            {
+                "claim_text": "Trade press reports value the Meridian deal at around 60 million euros.",
+                "category": "acquisition",
+                "supporting_excerpt": "trade press reports value the Meridian deal at around 60 million euros",
+                "event_date": None,
+            },
+        ]
+    }
+    results = {
+        "claims": [
+            {
+                "claim_text": "Northstar reported revenue of 312 million euros for 2025, up 14 percent.",
+                "category": "financial_performance",
+                "supporting_excerpt": "Northstar reported revenue of 312 million euros for 2025, up 14 percent",
+                "event_date": None,
             }
         ]
     }
@@ -92,12 +125,14 @@ def _claims() -> dict[str, str]:
         MARKER_PROFILE: json.dumps(profile),
         MARKER_ACQUISITION: json.dumps(acquisition),
         MARKER_EXPANSION: json.dumps(expansion),
+        MARKER_RESULTS: json.dumps(results),
     }
 
 
 PAGES: dict[str, str] = {
     URL_PROFILE: PAGE_PROFILE,
     URL_ACQUISITION: PAGE_ACQUISITION,
+    URL_RESULTS: PAGE_RESULTS,
     URL_EXPANSION: PAGE_EXPANSION,
 }
 
@@ -105,6 +140,11 @@ SEARCH_HITS = [
     SearchHit(
         url=URL_ACQUISITION,
         title="Acquisition of Meridian (fixture)",
+        source_type="official_company_announcement",
+    ),
+    SearchHit(
+        url=URL_RESULTS,
+        title="Annual results 2025 (fixture)",
         source_type="official_company_announcement",
     ),
     SearchHit(url=URL_EXPANSION, title="Trade news on expansion (fixture)", source_type="news"),

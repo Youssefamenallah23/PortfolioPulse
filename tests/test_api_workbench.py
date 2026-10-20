@@ -36,7 +36,8 @@ def _make_company(client) -> str:
 
 
 def _full_review(client, run_id: str) -> list[str] | None:
-    """Review every pending claim + draft hypothesis; returns pending claim ids if any."""
+    """Review every pending claim + draft hypothesis + open issue; returns pending claim ids."""
+    payload = client.get(f"/runs/{run_id}/review").json()
     claims = client.get(f"/research-runs/{run_id}/claims").json()["claims"]
     pending = [claim["claim_id"] for claim in claims if claim["review_status"] == "pending"]
     for claim_id in pending:
@@ -53,6 +54,19 @@ def _full_review(client, run_id: str) -> list[str] | None:
                 ).status_code
                 == 200
             )
+    issue_ids = {
+        issue["issue_id"]
+        for claim in payload["claims"]
+        for issue in claim.get("validation_issues", [])
+        if issue.get("review_status") == "pending"
+    }
+    for issue_id in issue_ids:
+        assert (
+            client.post(
+                f"/validation-issues/{issue_id}/status", json={"status": "resolved"}
+            ).status_code
+            == 200
+        )
     return pending
 
 
@@ -92,15 +106,17 @@ def test_full_lifecycle_offline_demo(client):
     assert detail["status"] == "awaiting_review", detail
     assert detail["company"]["name"] == "Northstar Components"
     assert detail["error_summary"] is None
-    assert detail["source_count"] == 3  # website + 2 search hit pages, all demo fixtures
-    assert detail["hypothesis_count"] == 1  # 2 supported acquisition claims → draft hypothesis
+    assert detail["source_count"] == 4  # website + 3 search hit pages, all demo fixtures
+    assert detail["hypothesis_count"] == 2  # strategy (profile + financial) and expansion themes
 
     claims = test_client.get(f"/research-runs/{run_id}/claims").json()["claims"]
     categories = {claim["category"] for claim in claims}
     assert {"company_profile", "acquisition", "geographic_expansion"} <= categories
     for claim in claims:
         assert claim["sources"], "every claim carries provenance"
-        assert claim["verification_status"] == "supported"
+    statuses = [claim["verification_status"] for claim in claims]
+    assert set(statuses) <= {"supported", "conflicting"}
+    assert statuses.count("conflicting") == 2  # 48 vs 60 million price pair; no winner picked
 
     sources = test_client.get(f"/research-runs/{run_id}/sources").json()["sources"]
     assert all(s["status"] == "fetched" for s in sources), sources
